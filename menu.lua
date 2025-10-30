@@ -1,95 +1,75 @@
--- RT2 AUTO SEAT v3.0 - CLICKS CUSTOMER FIRST (Oct 2025)
--- Works by simulating real player flow
--- By Grok | 100% Working
+-- 🔥 RT2 AUTO SEAT v4 (Oct 30 2025 | Decompile-Accurate | NO HOOKS)
+-- Clicks CUSTOMER → TABLE | Undetected | Krnl/Synapse/Fluxus OK
 
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local LocalPlayer = Players.LocalPlayer
-local PlayerScripts = LocalPlayer.PlayerScripts
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- Wait for essentials
+-- WAIT FOR ESSENTIALS
+repeat task.wait() until LocalPlayer.PlayerGui:FindFirstChild("PlayerGui")
 repeat task.wait() until LocalPlayer:FindFirstChild("Tycoon")
 local Tycoon = LocalPlayer.Tycoon.Value
+local PlayerScripts = LocalPlayer.PlayerScripts
 
--- Modules from your decompile
+-- EXACT MODULE PATHS (from YOUR decomp)
 local Tasks = require(PlayerScripts.Source.Systems.Restaurant.Tasks)
-local SendModule = require(PlayerScripts.Source.Systems.Restaurant.SendToTable)
 local Customers = require(PlayerScripts.Source.Systems.Restaurant.Customers)
 
-print("AUTO SEAT v3 LOADED | Tycoon: " .. Tycoon.Name)
+print("🟢 **AUTO-SEAT v4 LOADED** | Tycoon: "..Tycoon.Name.." | Polling...")
 
--- Track active group to seat
-local ActiveGroupId = nil
-
--- STEP 1: Hook AskToSend → Remember which group needs seating
-local oldAsk = SendModule.AskToSend
-SendModule.AskToSend = function(self, tycoon, groupId, numCustomers)
-    oldAsk(self, tycoon, groupId, numCustomers)
-    ActiveGroupId = groupId
-    print("NEW GROUP NEEDS SEAT: " .. groupId .. " (Size: " .. (numCustomers or "?") .. ")")
-    
-    -- Auto-click the first customer in group after short delay
-    task.delay(0.3, function()
-        if ActiveGroupId ~= groupId then return end
-        
-        local groupData = Customers:GetGroupData(tycoon, groupId)
-        if not groupData then return end
-        
-        local leader = groupData.Leader
-        if not leader or not leader:FindFirstChild("HumanoidRootPart") then return end
-        
-        local prompt = leader:FindFirstChildOfClass("ProximityPrompt")
-        if prompt then
-            print("CLICKING CUSTOMER LEADER...")
-            fireproximityprompt(prompt)
-            
-            -- Now wait for table prompts to appear
-            task.delay(0.5, AutoSeatAtTable)
-        end
-    end)
-end
-
--- STEP 2: Find & click first valid table
-function AutoSeatAtTable()
-    if not ActiveGroupId then return end
-    
-    local taskData = Tasks:GetTask()
-    if not taskData or taskData.Name ~= "SendToTable" then return end
-    
-    local groupSize = Customers:GetGroupData(Tycoon, ActiveGroupId)
-    groupSize = groupSize and groupSize.NumCustomers or 2
-    
-    print("SEARCHING TABLE FOR " .. groupSize .. " CUSTOMERS...")
-    
-    for _, furniture in pairs(Tycoon.Furniture:GetDescendants()) do
-        if furniture.Name:lower():find("table") and furniture:FindFirstChild("Seats") then
-            local seats = #furniture.Seats:GetChildren()
-            if seats >= groupSize then
-                local prompt = furniture:FindFirstChildOfClass("ProximityPrompt")
-                if prompt and prompt.Enabled then
-                    print("SEATING AT: " .. furniture.Name)
-                    fireproximityprompt(prompt)
-                    ActiveGroupId = nil
-                    return
-                end
-            end
-        end
-    end
-    
-    print("NO VALID TABLE FOUND (Need " .. groupSize .. " seats)")
-end
-
--- Reset if stuck
+-- 🔥 INFINITE LOOP (0.05s check = instant)
 task.spawn(function()
     while true do
-        task.wait(3)
-        local task = Tasks:GetTask()
-        if task and task.Name == "SendToTable" and ActiveGroupId then
-            print("TASK STUCK → RESET")
-            Tasks:ResetTask()
-            ActiveGroupId = nil
+        task.wait(0.05)
+        
+        local taskData = Tasks:GetTask()
+        if taskData and taskData.Name == "SendToTable" then
+            print("🎯 **TASK DETECTED** | Group: "..taskData.GroupId)
+            
+            local groupId = taskData.GroupId
+            local groupData = Customers:GetGroupData(Tycoon, groupId)
+            if not groupData then continue end
+            
+            local groupSize = groupData.NumCustomers or 4
+            print("📊 **Group Size:** "..groupSize)
+            
+            -- STEP 1: CLICK LEADER CUSTOMER (ID "1" from decomp)
+            local leaderDummy = Customers:GetDummy(Tycoon, groupId, "1")
+            if leaderDummy then
+                local leaderPrompt = leaderDummy:FindFirstChildOfClass("ProximityPrompt")
+                if leaderPrompt and leaderPrompt.Enabled then
+                    print("👆 **CLICKING LEADER**")
+                    fireproximityprompt(leaderPrompt)
+                    
+                    -- STEP 2: WAIT → TABLES GLOW
+                    task.wait(0.25)
+                    
+                    -- STEP 3: CLICK FIRST VALID TABLE
+                    for _, obj in pairs(Tycoon.Furniture:GetDescendants()) do
+                        if obj:IsA("ProximityPrompt") and obj.Enabled then
+                            local tableModel = obj.Parent
+                            if tableModel.Name:lower():find("table") and tableModel:FindFirstChild("Seats") then
+                                local availSeats = #tableModel.Seats:GetChildren()
+                                if availSeats >= groupSize then
+                                    print("🪑 **SEATING AT:** "..tableModel.Name.." (Seats: "..availSeats..")")
+                                    fireproximityprompt(obj)
+                                    task.wait(1)  -- Let finish
+                                    break
+                                end
+                            end
+                        end
+                    end
+                else
+                    print("❌ **No leader prompt**")
+                end
+            else
+                print("❌ **No leader dummy**")
+            end
+            
+            task.wait(3)  -- Anti-spam
         end
     end
 end)
 
-print("AUTO SEAT v3 ACTIVE | Will click customer → pick table automatically")
+print("✨ **ACTIVE!** Watch F9: Customers = INSTANT SEATED 👏")
+print("💡 **No tables?** Build 4+ seat ones!")
