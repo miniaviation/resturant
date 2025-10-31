@@ -1,0 +1,173 @@
+-- // DOCK → LOAD FIRST BULK CARGO → REFUEL → BACK → UNDOCK
+-- // 100% COMPATIBLE WITH DECOMPILATION
+-- // Uses correct "ListItem" name + first valid Load button + full refuel path
+
+local firesignal = firesignal or function(signal)
+    if getconnections then
+        for _, conn in pairs(getconnections(signal)) do
+            if conn.Function then pcall(conn.Function) end
+        end
+    end
+end
+
+local p = game:GetService("Players").LocalPlayer
+local pg = p.PlayerGui
+
+-- === HELPER: Wait for child ===
+local function waitForChild(parent, name, timeout)
+    timeout = timeout or 10
+    local start = tick()
+    while tick() - start < timeout do
+        local child = parent:FindFirstChild(name)
+        if child then return child end
+        task.wait()
+    end
+    return nil
+end
+
+-- === HELPER: Safe fire ===
+local function safeFireSignal(sig, desc)
+    if not sig then warn("Missing: " .. desc); return false end
+    local ok, err = pcall(firesignal, sig)
+    if not ok then warn("Fire failed: " .. desc .. " | " .. err) end
+    return ok
+end
+
+--------------------------------------------------------------------
+-- 1. DOCKING
+--------------------------------------------------------------------
+local shipGui = waitForChild(pg, "ShipControlGui")
+local dockMenu = shipGui and waitForChild(shipGui:WaitForChild("Menus"), "DockingRequest")
+if dockMenu then
+    for _, btn in pairs(dockMenu:GetChildren()) do
+        if btn:IsA("TextButton") or btn:IsA("ImageButton") then
+            safeFireSignal(btn.MouseButton1Click, "DockingRequest")
+            break
+        end
+    end
+end
+
+-- Wait for PortGui
+local portGui = waitForChild(pg, "PortGui", 15)
+local loadingBar = portGui and waitForChild(portGui, "LoadingBar")
+if loadingBar then
+    repeat task.wait() until not loadingBar.Visible
+end
+
+-- Wait for main menu
+local mainMenu = portGui and waitForChild(portGui, "PortMainMenu")
+if mainMenu then
+    repeat task.wait() until mainMenu.Visible
+    local menuButtons = waitForChild(mainMenu, "MenuButtons")
+    local cargoMgr = menuButtons and waitForChild(menuButtons, "CargoManager")
+    repeat task.wait() until cargoMgr and cargoMgr:FindFirstChild("Button")
+end
+wait(3)
+
+--------------------------------------------------------------------
+-- 2. OPEN CARGO MANAGER
+--------------------------------------------------------------------
+local cargoBtn = portGui and portGui.PortMainMenu and portGui.PortMainMenu.MenuButtons
+               and portGui.PortMainMenu.MenuButtons.CargoManager
+               and portGui.PortMainMenu.MenuButtons.CargoManager.Button
+safeFireSignal(cargoBtn and cargoBtn.MouseButton1Click, "CargoManager")
+task.wait(1)
+
+--------------------------------------------------------------------
+-- 3. BULK LOAD: FIRST "ListItem" → "Load"
+--------------------------------------------------------------------
+local bulkMenu = portGui and portGui:FindFirstChild("BulkMenu")
+local scroll = bulkMenu and bulkMenu:FindFirstChild("ScrollingFrame")
+if not scroll then
+    warn("BulkMenu.ScrollingFrame not found!")
+else
+    local firstLoadBtn = nil
+    for _, item in pairs(scroll:GetChildren()) do
+        if item.Name == "ListItem" and item.Visible then
+            local loadBtn = item:FindFirstChild("Load")
+            if loadBtn and (loadBtn:IsA("TextButton") or loadBtn:IsA("ImageButton")) then
+                if loadBtn:FindFirstChild("Speed") and loadBtn.Speed.Text == "Ship Full!" then
+                    continue
+                end
+                firstLoadBtn = loadBtn
+                break
+            end
+        end
+    end
+
+    if firstLoadBtn then
+        print("Clicking first Load button...")
+        safeFireSignal(firstLoadBtn.MouseButton1Click, "First ListItem.Load")
+        if loadingBar then
+            repeat task.wait() until not loadingBar.Visible
+            wait(3)
+        else
+            wait(3)
+        end
+    else
+        warn("No valid ListItem.Load button found (all full?)")
+        wait(3)
+    end
+end
+
+--------------------------------------------------------------------
+-- 4. BACK FROM BULK MENU
+--------------------------------------------------------------------
+local backBtn = bulkMenu and bulkMenu:FindFirstChild("Back")
+safeFireSignal(backBtn and backBtn.MouseButton1Click, "Back from BulkMenu")
+task.wait(0.6)
+
+--------------------------------------------------------------------
+-- 5. OPEN REFUEL MENU
+--------------------------------------------------------------------
+local refuelBtn = portGui and portGui.PortMainMenu and portGui.PortMainMenu.MenuButtons
+                and portGui.PortMainMenu.MenuButtons.Refuel
+                and portGui.PortMainMenu.MenuButtons.Refuel.Button
+safeFireSignal(refuelBtn and refuelBtn.MouseButton1Click, "Refuel menu")
+task.wait(0.6)
+
+--------------------------------------------------------------------
+-- 6. PURCHASE FUEL (FULL REFUEL)
+--------------------------------------------------------------------
+local shipServices = portGui and waitForChild(portGui, "ShipServices", 5)
+local purchaseFuelBtn = shipServices and shipServices:FindFirstChild("PurchaseFuel")
+if purchaseFuelBtn then
+    safeFireSignal(purchaseFuelBtn.MouseButton1Click, "PurchaseFuel")
+    -- Wait for refuel to complete
+    if loadingBar then
+        repeat task.wait() until not loadingBar.Visible
+        wait(2)
+    else
+        wait(2)
+    end
+else
+    warn("PurchaseFuel button not found!")
+    wait(2)
+end
+
+--------------------------------------------------------------------
+-- 7. EXIT SHIP SERVICES (BACK TO MAIN MENU)
+--------------------------------------------------------------------
+local exitBtn = shipServices and shipServices:FindFirstChild("Exit")
+safeFireSignal(exitBtn and exitBtn.MouseButton1Click, "Exit ShipServices")
+task.wait(0.6)
+
+--------------------------------------------------------------------
+-- 8. UNDOCK
+--------------------------------------------------------------------
+local undockBtn = portGui and portGui.PortMainMenu and portGui.PortMainMenu.MenuButtons
+                and portGui.PortMainMenu.MenuButtons.Undock
+                and portGui.PortMainMenu.MenuButtons.Undock.Button
+safeFireSignal(undockBtn and undockBtn.MouseButton1Click, "Undock")
+
+-- Wait for undocking
+if loadingBar then
+    repeat task.wait() until not loadingBar.Visible
+end
+
+-- Final check: ShipControlGui re-enabled
+local shipCtrl = waitForChild(pg, "ShipControlGui")
+if shipCtrl then repeat task.wait() until shipCtrl.Enabled end
+
+wait(3)
+print("Dock → Load → Refuel → Undock cycle complete!")
